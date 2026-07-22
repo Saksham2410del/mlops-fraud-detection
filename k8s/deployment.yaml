@@ -1,0 +1,100 @@
+# Kubernetes Deployment — Fraud Detection API
+#
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-detection-api
+  labels:
+    app: fraud-detection
+    component: api
+    version: v1
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fraud-detection
+      component: api
+  
+  # Rolling update strategy: zero-downtime deployments
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # Allow 1 extra pod during update
+      maxUnavailable: 0  # Never have fewer than 2 pods available
+  
+  template:
+    metadata:
+      labels:
+        app: fraud-detection
+        component: api
+        version: v1
+      annotations:
+        # Tell Prometheus to scrape this pod
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: fraud-detection-api
+          # Replace with your actual GHCR image path after Week 4
+          image: ghcr.io/saksham2410del/mlops-fraud-detection:latest
+          imagePullPolicy: Always
+          
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          
+
+
+          
+          # -- Resource Management -----------------------------------------
+          # Requests = guaranteed resources; Limits = maximum allowed
+          resources:
+            requests:
+              cpu: "250m"       # 0.25 CPU cores guaranteed
+              memory: "512Mi"   # 512 MB RAM guaranteed (model needs ~300MB)
+            limits:
+              cpu: "1000m"      # Max 1 CPU core
+              memory: "1Gi"     # Max 1 GB RAM
+          
+          # -- Health Probes -----------------------------------------------
+          # Liveness: restart pod if /health fails (app crashed)
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30  # Wait for model to load
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          
+          # Readiness: stop sending traffic if /health fails (model not ready)
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          
+          # -- Environment Variables ---------------------------------------
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow-service:5000"
+            - name: OLLAMA_HOST
+              value: "http://host.minikube.internal:11434"
+          
+          # -- Security Context --------------------------------------------
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: false
+            allowPrivilegeEscalation: false
+
+      # Graceful shutdown: give in-flight predictions time to complete
+      terminationGracePeriodSeconds: 30

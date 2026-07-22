@@ -1,0 +1,98 @@
+# Docker Compose — Local MLOps Stack
+#
+
+services:
+  # FastAPI Fraud Detection API
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fraud-detection-api
+    ports:
+      - "8000:8000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://mlflow:5000
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount models directory so you can update the model without rebuilding
+      - ./models:/app/models:ro
+      - ./reports:/app/reports
+    depends_on:
+      mlflow:
+        condition: service_started
+    networks:
+      - ml-network
+    restart: unless-stopped
+
+  # MLflow Tracking Server
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.16.0
+    container_name: mlflow-server
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+    networks:
+      - ml-network
+    restart: unless-stopped
+
+  # Prometheus (Metrics Collection)
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - app
+    networks:
+      - ml-network
+    restart: unless-stopped
+
+  # Grafana (Dashboards & Visualization)
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      # Default admin credentials (change in production!)
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Auto-provision the Prometheus data source
+      - GF_DATASOURCES_DEFAULT_NAME=Prometheus
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - ml-network
+    restart: unless-stopped
+
+# Shared network
+networks:
+  ml-network:
+    driver: bridge
+
+# Persistent volumes
+volumes:
+  mlflow_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

@@ -1,0 +1,26 @@
+# Kubernetes Service — Fraud Detection API
+# Exposes the fraud-detection pods as a single network endpoint.
+#
+# On Minikube:
+#   minikube service fraud-detection-service --url
+#   → Opens a browser to the API's external URL
+#
+# In production (AWS/GCP): change type to LoadBalancer for a real public IP
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-detection-service
+  labels:
+    app: fraud-detection
+    component: api
+spec:
+  type: LoadBalancer  # NodePort on Minikube, real LB in cloud
+  selector:
+    app: fraud-detection
+    component: api
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80          # External port
+      targetPort: 8000  # Container port

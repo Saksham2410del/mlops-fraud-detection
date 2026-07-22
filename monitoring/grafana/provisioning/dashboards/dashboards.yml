@@ -1,0 +1,13 @@
+# Auto-provision dashboards from the /var/lib/grafana/dashboards directory
+apiVersion: 1
+
+providers:
+  - name: "Fraud Detection Dashboards"
+    orgId: 1
+    folder: "MLOps"
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

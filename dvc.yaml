@@ -1,0 +1,46 @@
+stages:
+  preprocess:
+    cmd: python src/preprocess.py --input data/raw/PS_20174392719_1491204439457_log.csv --output data/processed/
+    deps:
+      - src/preprocess.py
+      - data/raw/PS_20174392719_1491204439457_log.csv
+    outs:
+      - data/processed/X_train.csv
+      - data/processed/X_test.csv
+      - data/processed/y_train.csv
+      - data/processed/y_test.csv
+      - data/processed/X_train_ref.csv
+    metrics:
+      - data/processed/data_summary.json:
+          cache: false
+
+  train:
+    cmd: python src/train.py --data-dir data/processed/ --model-dir models/
+    deps:
+      - src/train.py
+      - data/processed/X_train.csv
+      - data/processed/y_train.csv
+      - data/processed/X_test.csv
+      - data/processed/y_test.csv
+    outs:
+      - models/xgboost_fraud.joblib
+    metrics:
+      - metrics.json:
+          cache: false
+    plots:
+      - reports/confusion_matrix.png
+      - reports/feature_importance.png
+
+  evaluate:
+    cmd: python src/evaluate.py --model models/xgboost_fraud.joblib --data-dir data/processed/
+    deps:
+      - src/evaluate.py
+      - models/xgboost_fraud.joblib
+      - data/processed/X_test.csv
+      - data/processed/y_test.csv
+    plots:
+      - reports/roc_curve.png
+      - reports/pr_curve.png
+    metrics:
+      - reports/evaluation_report.json:
+          cache: false

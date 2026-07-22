@@ -1,0 +1,23 @@
+# Ignore everything except what the Docker build needs
+.git
+.github
+.dvc
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+data/raw/
+data/processed/
+mlruns/
+reports/
+tests/
+k8s/
+monitoring/
+*.md
+*.yml
+!requirements.txt
+!docker-compose.yml
+.gitignore
+.dockerignore
+LICENSE

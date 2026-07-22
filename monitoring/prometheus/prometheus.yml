@@ -1,0 +1,28 @@
+# ===========================================================================
+# Prometheus Configuration
+# ===========================================================================
+# Scrapes the FastAPI /metrics endpoint every 15 seconds to collect:
+#   - HTTP request counts, latencies, sizes (from prometheus_fastapi_instrumentator)
+#   - fraud_predictions_total (custom counter)
+#   - prediction_latency_seconds (custom histogram)
+# ===========================================================================
+
+global:
+  scrape_interval: 15s      # How often to pull metrics from targets
+  evaluation_interval: 15s  # How often to evaluate alerting rules
+  scrape_timeout: 10s       # Timeout for each scrape attempt
+
+scrape_configs:
+  # ── FastAPI Fraud Detection API ──────────────────────────────────────
+  - job_name: "fastapi-fraud-detection"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["app:8000"]
+        labels:
+          service: "fraud-detection-api"
+          environment: "local"
+
+  # ── Prometheus self-monitoring ───────────────────────────────────────
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
