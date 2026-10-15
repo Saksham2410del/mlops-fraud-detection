@@ -16,21 +16,18 @@ shap>=0.44
 # Drift Detection
 evidently>=0.4
 
-# API (Week 2+)
+# API
 fastapi>=0.110
 uvicorn>=0.27
 prometheus-fastapi-instrumentator>=6.1
+prometheus-client>=0.20
 
-# LLM Integration (Week 7)
-ollama>=0.2
+# LLM Integration
+ollama>=0.3
 
-# Visualization
-matplotlib>=3.8
-seaborn>=0.13
+# Plotting
+matplotlib>=3.7
 
 # Testing
 pytest>=8.0
 httpx>=0.27
-
-# Code Quality
-ruff>=0.3

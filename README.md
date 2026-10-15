@@ -1,6 +1,14 @@
-# Financial Fraud Detection Platform
+# FraudGuard — Financial Fraud Detection System
 
-A complete MLOps pipeline for detecting financial fraud in real-time. This project handles everything from dataset versioning and model training to serving predictions via Kubernetes. It also features a GenAI component that explains why a transaction was blocked using SHAP values and a local LLM.
+An end-to-end machine learning pipeline for detecting financial fraud in real-time using XGBoost, FastAPI, Docker, MLflow, and DVC.
+
+## What This Project Does
+
+- Built a fraud detection model in Python on 6.3 million financial transactions, using XGBoost to classify each transaction as fraud or legitimate.
+- Handled a highly imbalanced dataset with only 0.13% fraud cases by applying SMOTE on the training data alone, keeping 1.27 million test records untouched, and created 5 new features from account balances and transaction amounts (balance change, amount-to-balance ratio), raising model inputs to 16.
+- Achieved a 0.95 F1-score and 99.8% recall, correctly catching 1,640 out of 1,643 fraud cases in the test set.
+- Developed a REST API using FastAPI that returns an Approve or Block decision and generates a 3-sentence investigation report for each transaction using the Llama 3.2 language model.
+- Streamlined experiment tracking by integrating MLflow and DVC, ensuring precise version control for a 500MB+ dataset and fully reproducible model training.
 
 ## Project Architecture
 
@@ -8,69 +16,109 @@ A complete MLOps pipeline for detecting financial fraud in real-time. This proje
 graph LR
     A[Data Pipeline<br/>DVC + SMOTE] --> B[Model Training<br/>XGBoost + MLflow]
     B --> C[API Serving<br/>FastAPI + Docker]
-    C --> D[Infrastructure<br/>Kubernetes + AWS EC2]
 ```
 
-## Key Technologies
+## Tech Stack
 
 - **Machine Learning**: Python, XGBoost, Scikit-learn, Imbalanced-learn (SMOTE)
-- **MLOps & Tracking**: MLflow, DVC, Evidently
+- **MLOps & Tracking**: MLflow, DVC
 - **API & Serving**: FastAPI, Uvicorn, Docker
-- **Infrastructure**: Kubernetes (Minikube/HPA), AWS EC2
-- **CI/CD**: GitHub Actions, GitHub Container Registry (GHCR)
 - **Monitoring**: Prometheus, Grafana
-- **GenAI Explainability**: SHAP, Ollama (Local LLM)
+- **Explainability**: SHAP, Ollama (Llama 3.2)
 
-## Overview
+## Dataset
 
-The goal of this project is to build a robust, scalable system to detect fraudulent transactions using the PaySim synthetic dataset (6.3M records). Since financial datasets are highly imbalanced (0.13% fraud rate), the pipeline uses SMOTE for oversampling and prioritizes precision-recall tradeoffs over raw accuracy.
+PaySim synthetic financial dataset (6.3M transactions, 0.13% fraud rate).  
+Download from [Kaggle](https://www.kaggle.com/datasets/ealaxi/paysim1) and place the CSV in `data/raw/`.
 
-### Core Features
+## Quick Start
 
-1. **Automated Training Pipeline**: Uses DVC for data versioning. The preprocessing script cleans the data and handles class imbalance, while the training script trains an XGBoost model and logs all metrics and artifacts directly to MLflow.
-2. **Production-Ready API**: A FastAPI application serves the model. It exposes `/predict` for real-time inference, `/health` for Kubernetes probes, and `/metrics` for Prometheus scraping.
-3. **GenAI Explainability**: When a transaction is blocked, the `/explain` endpoint uses SHAP tree explainers to determine the driving features, and passes them to a locally-hosted LLM (via Ollama) to generate a human-readable investigation report for compliance teams.
-4. **Scalable Deployment**: The application is containerized using Docker. A GitHub Actions CI/CD pipeline automatically lints, tests, and builds the image, pushing it to GHCR. The API is deployed to Kubernetes (Minikube) with a Horizontal Pod Autoscaler (HPA) to handle traffic spikes.
-5. **Observability**: Prometheus scrapes custom business metrics (e.g., fraud block rate, prediction latency) from the API, which are visualized in real-time on a Grafana dashboard.
-
-## Cloud & Production Strategy
-
-While this project is designed to run locally using Minikube for development and testing, it is fully cloud-ready. 
-The production deployment strategy involves running the Docker containers on an **AWS EC2** instance, utilizing the pre-built images from the GitHub Container Registry. The CI/CD pipeline ensures that any code pushed to the `main` branch is automatically tested and built for cloud deployment.
-
-## Local Development Setup
-
-To run this project locally on your machine:
-
+### 1. Install Dependencies
 ```bash
-# 1. Clone the repository
-git clone https://github.com/saksham2410del/mlops-fraud-detection.git
-cd mlops-fraud-detection
-
-# 2. Set up the virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
 pip install -r requirements.txt
-
-# 3. Train the model and start the API
-python src/preprocess.py
-python src/train.py
-uvicorn src.predict:app --reload
 ```
 
-You can now test the API by navigating to `http://localhost:8000/docs`.
+### 2. Run the Pipeline
+```bash
+# Preprocess data (applies SMOTE, creates features)
+python src/preprocess.py --input data/raw/PS_20174392719_1491204439457_log.csv --output data/processed/
 
-### Running with Docker Compose
+# Train the model (logs to MLflow)
+python src/train.py --data-dir data/processed/ --model-dir models/
 
-To spin up the entire stack (API, MLflow, Prometheus, Grafana) locally:
+# Evaluate the model
+python src/evaluate.py --model models/xgboost_fraud.joblib --data-dir data/processed/
+```
 
+### 3. Start the API
+```bash
+uvicorn src.predict:app --host 0.0.0.0 --port 8000
+```
+
+### 4. Docker
 ```bash
 docker-compose up --build
 ```
-- **API (Swagger UI)**: `http://localhost:8000/docs`
-- **MLflow Tracking**: `http://localhost:5000`
-- **Grafana Dashboards**: `http://localhost:3000` (admin/admin)
+
+### 5. Test a Prediction
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "step": 1,
+    "type": "TRANSFER",
+    "amount": 181000.0,
+    "oldbalanceOrg": 181000.0,
+    "newbalanceOrig": 0.0,
+    "oldbalanceDest": 0.0,
+    "newbalanceDest": 0.0
+  }'
+```
+
+## DVC Pipeline
+
+```bash
+dvc repro       # Run the full pipeline
+dvc dag         # View pipeline DAG
+dvc metrics show  # View metrics
+```
+
+## Project Structure
+
+```
+mlops-fraud-detection/
+├── src/
+│   ├── preprocess.py      # Data cleaning, feature engineering, SMOTE
+│   ├── train.py           # XGBoost training with MLflow logging
+│   ├── evaluate.py        # Model evaluation and threshold tuning
+│   ├── predict.py         # FastAPI inference server
+│   ├── explain.py         # SHAP + LLM explainability
+│   └── drift.py           # Data drift detection with Evidently
+├── data/
+│   └── raw/               # Raw PaySim CSV (tracked by DVC)
+├── models/                # Trained model artifacts
+├── reports/               # Evaluation plots and reports
+├── monitoring/
+│   ├── prometheus/        # Prometheus config
+│   └── grafana/           # Grafana dashboards
+├── tests/                 # Unit tests
+├── Dockerfile
+├── docker-compose.yml
+├── dvc.yaml               # DVC pipeline definition
+├── requirements.txt
+└── metrics.json           # Model performance metrics
+```
+
+## Model Performance
+
+| Metric | Score |
+|--------|-------|
+| F1-Score | 0.95 |
+| Recall | 99.8% |
+| Precision | 90.7% |
+| ROC AUC | 0.999 |
+| Fraud Cases Caught | 1,640 / 1,643 |
 
 ## License
 
-MIT License. See `LICENSE` for details.
+MIT

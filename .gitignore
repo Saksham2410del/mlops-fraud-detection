@@ -1,45 +1,14 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+.env
 *.egg-info/
 dist/
 build/
-*.egg
 .venv/
 venv/
-env/
-
-# Data (tracked by DVC)
-data/raw/*.csv
 data/processed/
-
-# Models
-models/*.joblib
-models/*.pkl
-
-# MLflow
+data/raw/*.csv
 mlruns/
-mlflow.db
-
-# Reports (generated)
-reports/*.png
-reports/*.html
-reports/*.json
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Docker
+mlflow/
 *.log
-
-# DVC
-/storage
-*.dvc.lock
+.DS_Store

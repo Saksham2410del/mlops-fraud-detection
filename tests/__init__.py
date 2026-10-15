@@ -1,1 +1,1 @@
-"""Test suite for MLOps Fraud Detection Pipeline."""
+# Test package for fraud detection
