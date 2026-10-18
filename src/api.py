@@ -1,6 +1,7 @@
 # FastAPI app that serves the trained model.
 #
 #   POST /predict  -> Approve / Block decision + 3-sentence investigation report
+#                     (grounded in the bank policies in policies/)
 #   GET  /health   -> is the model loaded?
 #
 # Run locally:
@@ -52,6 +53,7 @@ class Prediction(BaseModel):
     fraud_probability: float
     investigation_report: str
     report_source: str
+    policies_used: list[str]
     model_latency_ms: float
 
 
@@ -72,12 +74,13 @@ def predict(txn: Transaction):
     model_ms = (time.perf_counter() - start) * 1000
 
     decision = "Block" if probability >= FRAUD_THRESHOLD else "Approve"
-    report, source = generate_report(data, decision, probability)
+    report, source, policy_ids = generate_report(data, decision, probability)
 
     return Prediction(
         decision=decision,
         fraud_probability=round(probability, 4),
         investigation_report=report,
         report_source=source,
+        policies_used=policy_ids,
         model_latency_ms=round(model_ms, 2),
     )

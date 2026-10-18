@@ -10,6 +10,7 @@ RAW_DATA_PATH = ROOT_DIR / "data" / "raw" / "PS_20174392719_1491204439457_log.cs
 PROCESSED_DIR = ROOT_DIR / "data" / "processed"
 MODEL_PATH = ROOT_DIR / "models" / "xgboost_fraud.joblib"
 REPORTS_DIR = ROOT_DIR / "reports"
+POLICIES_DIR = ROOT_DIR / "policies"
 
 TARGET = "isFraud"
 
@@ -48,3 +49,7 @@ RANDOM_STATE = 42
 FRAUD_THRESHOLD = 0.5
 
 LLM_MODEL = "llama3.2"
+EMBED_MODEL = "nomic-embed-text"
+
+# How many policy rules to give the LLM for each transaction
+TOP_K_POLICIES = 3

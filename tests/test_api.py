@@ -18,7 +18,7 @@ class FakeModel:
 @pytest.fixture
 def client(monkeypatch):
     # don't call a real LLM during tests
-    monkeypatch.setattr(api, "generate_report", lambda txn, d, p: ("One. Two. Three.", "test"))
+    monkeypatch.setattr(api, "generate_report", lambda txn, d, p: ("One. Two. Three.", "test", ["FP-01"]))
     return TestClient(api.app)
 
 
@@ -44,6 +44,7 @@ def test_blocks_high_probability(client):
     assert res["decision"] == "Block"
     assert res["fraud_probability"] == 0.97
     assert res["investigation_report"] == "One. Two. Three."
+    assert res["policies_used"] == ["FP-01"]
 
 
 def test_approves_low_probability(client):

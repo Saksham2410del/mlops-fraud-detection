@@ -1,7 +1,9 @@
-# Runs the API together with Ollama (which serves Llama 3.2).
+# Runs the API together with Ollama (which serves Llama 3.2 and the
+# nomic-embed-text model used to search the policy documents).
 #
 #   docker compose up --build
-#   docker compose exec ollama ollama pull llama3.2   # first time only
+#   docker compose exec ollama ollama pull llama3.2           # first time only
+#   docker compose exec ollama ollama pull nomic-embed-text
 
 services:
   api:

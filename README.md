@@ -1,8 +1,8 @@
 # FraudGuard - Financial Fraud Detection System
 
-FraudGuard classifies financial transactions as fraud or legitimate using XGBoost, trained on 6.3 million transactions. It's served through a FastAPI endpoint that returns an **Approve / Block** decision along with a short investigation report written by Llama 3.2.
+FraudGuard classifies financial transactions as fraud or legitimate using XGBoost, trained on 6.3 million transactions. It's served through a FastAPI endpoint that returns an **Approve / Block** decision along with a short investigation report written by Llama 3.2. The report is grounded in the bank's fraud policy documents using RAG, so the recommended next step comes from policy and not from the LLM's memory.
 
-**Stack:** Python, Pandas, Scikit-learn, imbalanced-learn, XGBoost, FastAPI, Ollama (Llama 3.2), Docker, DVC, MLflow
+**Stack:** Python, Pandas, Scikit-learn, imbalanced-learn, XGBoost, FastAPI, Ollama (Llama 3.2, nomic-embed-text), RAG, Docker, DVC, MLflow
 
 ## Problem Statement
 
@@ -12,7 +12,7 @@ Catching this with ML is harder than it sounds:
 
 - Fraud is extremely rare. Only 0.13% of transactions in this dataset are fraud, so a model that predicts "legit" every time gets 99.87% accuracy and is useless. Accuracy can't be the metric.
 - Missing a fraud costs much more than a false alarm. A blocked genuine payment means a verification call. A missed fraud means the money is gone. So the priority is high recall on the fraud class, with precision kept reasonable.
-- A probability score on its own isn't enough for the person reviewing the case. They need a quick explanation of why the transaction was flagged.
+- A probability score on its own isn't enough for the person reviewing the case. They need a quick explanation of why the transaction was flagged, and what the bank's procedure says to do next.
 
 ## Dataset
 
@@ -38,7 +38,23 @@ Training and the API both build features with the same function (`src/features.p
 
 **Model.** XGBoost with 200 trees, max depth 6 and `scale_pos_weight` for the remaining imbalance. Tree models fit well here: the data is tabular, the important signals are thresholds (like a balance hitting exactly 0), and inference takes milliseconds.
 
-**Investigation report.** For every transaction the API asks Llama 3.2, running locally through Ollama, for a 3-sentence report covering the risk level, the reason, and the next step for the analyst. Llama 3.2 is a small 3B model, and early versions got the arithmetic wrong and sometimes contradicted the model's decision. So now the code computes the facts (risk level, share of the balance moved, whether the account was emptied) and the LLM only phrases them. If Ollama isn't running, the API falls back to a template report.
+**Investigation report (RAG).** XGBoost makes the decision, and Llama 3.2 explains it in 3 sentences: the risk level, the facts behind it, and the next step for the analyst. Analysts at a bank follow written procedures, so the next step has to come from policy, not from whatever the LLM happens to suggest. The `policies/` folder holds 10 sample fraud rules (FP-01 to FP-10), for example holding a transfer that drains an account, flagging possible mule accounts, high value review, and customer liability timelines. These are sample policies written for this project, loosely based on common banking practice and RBI's guidance on unauthorised electronic transactions.
+
+For each transaction:
+
+1. `report.py` describes the transaction in plain English, for example "A large TRANSFER. It moved the entire balance out of the sender's account, leaving it at zero. The fraud model blocked it."
+2. `policy_search.py` embeds that description with `nomic-embed-text` (through Ollama) and compares it with the embeddings of all 10 rules using cosine similarity. The top 3 rules are returned.
+3. The rules are added to the Llama 3.2 prompt, and the model has to pick one and cite it ("Per FP-01, ..."). The API response also lists the rule IDs in `policies_used`.
+
+With only 10 rules, the embeddings sit in a NumPy array that's built once on the first request, so there's no need for a vector database.
+
+A few things were needed to make a small 3B model reliable here:
+
+- **Code computes the facts.** The model kept getting arithmetic wrong, so the code works out the risk level, the share of the balance moved, and whether the account was emptied. The LLM only puts them into words.
+- **Facts and rules are kept apart.** The prompt marks the facts as "the only facts you may use" and the rules as general rules. Without that, the model copied details from the rules into the report.
+- **The search query is a sentence, not numbers.** Embedding the raw list of balances put the right rule in the top 2 for only 5 of 12 test cases. Describing the transaction in words fixed most of that.
+
+If Ollama isn't running, the API still returns the decision with a template report.
 
 **Tracking.** The pipeline is defined in `dvc.yaml` (preprocess -> train -> evaluate), so `dvc repro` rebuilds everything and skips stages that haven't changed. Each evaluation is logged to MLflow with its parameters, metrics and plots, which makes it easy to compare experiments.
 
@@ -54,6 +70,8 @@ These are the scores on the untouched test set of 1,272,524 transactions:
 | Fraud caught | 1,640 / 1,643 |
 
 The full report is in [reports/classification_report.txt](reports/classification_report.txt). The model misses 3 fraud cases out of 1,643. The trade-off is that about 1 in 10 blocked transactions is genuine, which is usually acceptable for a bank since a verification call costs far less than a successful fraud.
+
+**Policy retrieval.** `python -m src.check_retrieval` runs 12 hand-labelled transactions where I know which rule should apply. The correct rule is among the 3 retrieved rules in **11 of 12** cases, and ranked first in 6 of 12. The most common rule ranked above it is FP-02 (mule accounts), which genuinely applies to most large transfers.
 
 ## Architecture
 
@@ -74,8 +92,11 @@ flowchart LR
         I --> J[XGBoost model]
         J --> K{prob >= 0.5}
         K --> L[Approve / Block]
-        L --> M[Llama 3.2 via Ollama]
-        M --> N[decision + report]
+        L --> P[policy_search.py<br/>nomic-embed-text]
+        Q[(policies/*.md<br/>FP-01..FP-10)] --> P
+        P -- top 3 rules --> M[Llama 3.2 via Ollama]
+        L --> M
+        M --> N[decision + report<br/>+ policies used]
     end
 
     D -. loaded at startup .-> J
@@ -90,8 +111,11 @@ flowchart LR
 │   ├── preprocess.py    # load data, split, SMOTE
 │   ├── train.py         # train XGBoost
 │   ├── evaluate.py      # test metrics, plots, MLflow logging
-│   ├── report.py        # Llama 3.2 investigation report
+│   ├── policy_search.py # finds the policy rules for a transaction (embeddings + cosine)
+│   ├── report.py        # Llama 3.2 investigation report, grounded in those rules
+│   ├── check_retrieval.py  # checks the search picks the right rule
 │   └── api.py           # FastAPI app
+├── policies/            # bank fraud policy rules used for RAG
 ├── tests/
 ├── models/xgboost_fraud.joblib
 ├── reports/classification_report.txt
@@ -113,6 +137,7 @@ pip install -r requirements.txt
 
 ```bash
 ollama pull llama3.2
+ollama pull nomic-embed-text
 uvicorn src.api:app --reload
 ```
 
@@ -128,9 +153,10 @@ curl -X POST http://localhost:8000/predict \
 {
   "decision": "Block",
   "fraud_probability": 1.0,
-  "investigation_report": "The risk level is high and the decision is to block the transaction. ...",
+  "investigation_report": "The risk level is high and the decision is to block the transaction. The large amount of 181,000.00 being transferred out of the sender's account, leaving it at zero, and the receiver account being empty before the transaction, support the decision. Per FP-01, the transaction must be held and the analyst must call the customer on their registered mobile number within 2 hours to confirm it.",
   "report_source": "llama3.2",
-  "model_latency_ms": 22.29
+  "policies_used": ["FP-02", "FP-01", "FP-06"],
+  "model_latency_ms": 20.5
 }
 ```
 
@@ -148,12 +174,14 @@ mlflow ui --backend-store-uri sqlite:///mlflow.db
 ```bash
 docker compose up --build
 docker compose exec ollama ollama pull llama3.2
+docker compose exec ollama ollama pull nomic-embed-text
 ```
 
-**Tests:**
+**Tests and retrieval check:**
 
 ```bash
 pytest
+python -m src.check_retrieval
 ```
 
 ## Limitations and next steps
@@ -162,3 +190,5 @@ pytest
 - The model looks at one transaction at a time. Features based on customer history, like the number of transfers in the last hour, would help catch subtler fraud.
 - The 0.5 threshold could be tuned based on the actual cost of a missed fraud versus a false alarm.
 - The report adds a few seconds per request on CPU. In production it could be generated only for blocked transactions, in the background.
+- Llama 3.2 (3B) still sometimes misstates a small detail in the report. A larger model such as Llama 3.1 8B would be more reliable, at the cost of speed.
+- The policies are short samples. A real bank's procedure manual would be much longer and would need to be split into smaller chunks before embedding.
