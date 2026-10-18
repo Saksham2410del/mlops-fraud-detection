@@ -1,14 +1,21 @@
 __pycache__/
 *.pyc
-.env
-*.egg-info/
-dist/
-build/
+.pytest_cache/
 .venv/
 venv/
-data/processed/
+.env
+
+# dataset is ~470 MB, download it from Kaggle instead
 data/raw/*.csv
+data/processed/
+
+# MLflow runs stay local
+mlflow.db
 mlruns/
-mlflow/
-*.log
+mlartifacts/
+
+# generated plots (metrics.json and classification_report.txt are kept)
+reports/*.png
+
+.ipynb_checkpoints/
 .DS_Store

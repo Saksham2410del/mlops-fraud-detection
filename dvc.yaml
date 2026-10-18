@@ -1,35 +1,42 @@
+# DVC pipeline: `dvc repro` runs only the stages whose inputs changed.
+# `dvc dag` shows the order, `dvc metrics show` prints the latest scores.
+
 stages:
   preprocess:
-    cmd: python src/preprocess.py --input data/raw/PS_20174392719_1491204439457_log.csv --output data/processed/
+    cmd: python -m src.preprocess
     deps:
-      - src/preprocess.py
       - data/raw/PS_20174392719_1491204439457_log.csv
+      - src/preprocess.py
+      - src/features.py
+      - src/config.py
     outs:
       - data/processed/X_train.csv
       - data/processed/X_test.csv
       - data/processed/y_train.csv
       - data/processed/y_test.csv
-      - data/processed/X_train_ref.csv
 
   train:
-    cmd: python src/train.py --data-dir data/processed/ --model-dir models/
+    cmd: python -m src.train
     deps:
-      - src/train.py
       - data/processed/X_train.csv
       - data/processed/y_train.csv
+      - src/train.py
     outs:
-      - models/xgboost_fraud.joblib
-    metrics:
-      - metrics.json:
-          cache: false
+      - models/xgboost_fraud.joblib:
+          cache: false   # keep the trained model in git so the API works out of the box
 
   evaluate:
-    cmd: python src/evaluate.py --model models/xgboost_fraud.joblib --data-dir data/processed/
+    cmd: python -m src.evaluate
     deps:
-      - src/evaluate.py
       - models/xgboost_fraud.joblib
       - data/processed/X_test.csv
       - data/processed/y_test.csv
+      - src/evaluate.py
+    metrics:
+      - reports/metrics.json:
+          cache: false
     plots:
-      - reports/roc_curve.png
-      - reports/pr_curve.png
+      - reports/confusion_matrix.png:
+          cache: false
+      - reports/feature_importance.png:
+          cache: false

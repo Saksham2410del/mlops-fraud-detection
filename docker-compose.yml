@@ -1,56 +1,26 @@
+# Runs the API together with Ollama (which serves Llama 3.2).
+#
+#   docker compose up --build
+#   docker compose exec ollama ollama pull llama3.2   # first time only
+
 services:
-  app:
+  api:
     build: .
-    container_name: fraud-detection-api
+    container_name: fraudguard-api
     ports:
       - "8000:8000"
     environment:
-      - MLFLOW_TRACKING_URI=http://mlflow:5000
-    volumes:
-      - ./models:/app/models:ro
-      - ./reports:/app/reports
+      - OLLAMA_HOST=http://ollama:11434
     depends_on:
-      - mlflow
-    networks:
-      - ml-network
+      - ollama
 
-  mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.16.0
-    container_name: mlflow-server
-    command: mlflow server --backend-store-uri sqlite:///mlflow/mlflow.db --default-artifact-root /mlflow/artifacts --host 0.0.0.0 --port 5000
+  ollama:
+    image: ollama/ollama:latest
+    container_name: fraudguard-ollama
     ports:
-      - "5000:5000"
+      - "11434:11434"
     volumes:
-      - mlflow_data:/mlflow
-    networks:
-      - ml-network
-
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
-    networks:
-      - ml-network
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    volumes:
-      - grafana_data:/var/lib/grafana
-    networks:
-      - ml-network
+      - ollama_models:/root/.ollama
 
 volumes:
-  mlflow_data:
-  grafana_data:
-
-networks:
-  ml-network:
-    driver: bridge
+  ollama_models:
